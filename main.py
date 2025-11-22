@@ -1,8 +1,16 @@
 import argparse
+import logging
 import requests
 import telegram
 import time
 from environs import Env
+
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 
 def format_review_message(devman_answer):
@@ -24,31 +32,16 @@ def format_review_message(devman_answer):
     return message.strip()
 
 
-def send_tg_notification(bot, tg_chat_id, message):
-    try:
-        bot.send_message(
-            chat_id=tg_chat_id,
-            text=message,
-            disable_web_page_preview=False
-        )
-        print('Уведомление отправлено')
-        return True
-    except telegram.error.TelegramError:
-        print('Уведомление не отправлено')
-        return False
-
-
-def devman_request(devman_token, bot, tg_chat_id):
+def get_devman_request(devman_token, bot, tg_chat_id):
     api_url = 'https://dvmn.org/api/long_polling/'
     headers = {'Authorization': devman_token}
 
     params = {}
     timestamp = None
 
-    send_tg_notification(
-        bot,
-        tg_chat_id,
-        '...бот начал отслеживание проверок...'
+    bot.send_message(
+        chat_id=tg_chat_id,
+        text='...бот начал отслеживание проверок...'
     )
 
     while True:
@@ -69,37 +62,44 @@ def devman_request(devman_token, bot, tg_chat_id):
             devman_answer = response.json()
 
             if devman_answer.get('status') == 'found':
-                print('Найдена новая проверка')
+                logger.info('Найдена новая проверка')
                 message = format_review_message(devman_answer)
-                print(message)
-                send_tg_notification(bot, tg_chat_id, message)
+                logger.info(f'Сформировано сообщение: {message}')
+
+                bot.send_message(
+                    chat_id=tg_chat_id,
+                    text=message,
+                    disable_web_page_preview=False
+                )
+
                 timestamp = devman_answer.get('last_attempt_timestamp')
 
             elif devman_answer.get('status') == 'timeout':
                 timestamp = devman_answer.get('timestamp_to_request')
-                print('Переподключение, ожидание проверок...')
+                logger.debug('Таймаут сервера, переподключение...')
 
         except requests.exceptions.ReadTimeout:
-            print('Таймаут запроса, продолжаем ожидание...')
+            logger.debug('Таймаут клиента, продолжаем long polling...')
             continue
 
         except requests.exceptions.HTTPError as error:
             if response.status_code == 401:
-                print('Ошибка: неверный токен авторизации')
+                logger.error('Ошибка авторизации: неверный токен Devman')
+                return
             else:
-                print(f'Ошибка API: {error}')
+                logger.error(f'Ошибка API Devman: {error}')
                 time.sleep(10)
 
         except requests.exceptions.ConnectionError as error:
-            print(f'Ошибка сети: {error}')
+            logger.eror(f'Ошибка подключения: {error}')
             time.sleep(10)
 
         except ValueError as error:
-            print(f'Ошибка данных: {error}')
+            logger.error(f'Ошибка обработки данных: {error}')
             time.sleep(5)
 
         except Exception as error:
-            print(f'Неожиданная ошибка: {error}')
+            logger.error(f'Неожиданная ошибка: {error}')
             time.sleep(10)
 
 
@@ -123,13 +123,16 @@ def main():
         bot = telegram.Bot(token=tg_token)
         bot_info = bot.get_me()
         print(f'Бот @{bot_info.username} успешно подключен')
-    except Exception as e:
-        print(f'Ошибка подключения к Telegram: {e}')
+    except Exception as error:
+        print(f'Ошибка подключения к Telegram: {error}')
 
     try:
-        devman_request(devman_token, bot, tg_chat_id)
+        get_devman_request(devman_token, bot, tg_chat_id)
     except KeyboardInterrupt:
-        send_tg_notification(bot, tg_chat_id, '...бот остановлен')
+        bot.send_message(
+            chat_id=tg_chat_id,
+            text='...бот остановлен'
+        )
         print('Бот остановлен')
 
 
