@@ -6,10 +6,6 @@ import time
 from environs import Env
 
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +28,7 @@ def format_review_message(devman_answer):
     return message.strip()
 
 
-def get_devman_request(devman_token, bot, tg_chat_id):
+def send_devman_review(devman_token, bot, tg_chat_id):
     api_url = 'https://dvmn.org/api/long_polling/'
     headers = {'Authorization': devman_token}
 
@@ -79,7 +75,6 @@ def get_devman_request(devman_token, bot, tg_chat_id):
                 logger.debug('Таймаут сервера, переподключение...')
 
         except requests.exceptions.ReadTimeout:
-            logger.debug('Таймаут клиента, продолжаем long polling...')
             continue
 
         except requests.exceptions.HTTPError as error:
@@ -104,6 +99,10 @@ def get_devman_request(devman_token, bot, tg_chat_id):
 
 
 def main():
+    logging.basicConfig(
+       format='%(asctime)s - %(levelname)s - %(message)s',
+       level=logging.INFO
+    )
     env = Env()
     env.read_env()
 
@@ -127,7 +126,7 @@ def main():
         print(f'Ошибка подключения к Telegram: {error}')
 
     try:
-        get_devman_request(devman_token, bot, tg_chat_id)
+        send_devman_review(devman_token, bot, tg_chat_id)
     except KeyboardInterrupt:
         bot.send_message(
             chat_id=tg_chat_id,
