@@ -14,53 +14,35 @@ class TelegramLogsHandler(logging.Handler):
 
     def emit(self, record):
         log_entry = self.format(record)
-        try:
-            self.tg_bot.send_message(chat_id=self.chat_id, text=log_entry[:4096])
-        except Exception as e:
-            print(f'Failed to sent log to Telegram: {e}')
-
-
-# logger = logging.getLogger()
+        self.tg_bot.send_message(
+            chat_id=self.chat_id,
+            text=log_entry[:4096]
+        )
 
 
 def format_review_message(devman_answer):
     attempt = devman_answer['new_attempts'][0]
-
     lesson_title = attempt['lesson_title']
     is_negative = attempt['is_negative']
     lesson_url = attempt['lesson_url']
-
     status = (
         'К сожалению, в работе нашлись ошибки'
         if is_negative
         else 'Работа принята'
     )
-
     message = f'''Преподаватель проверил работу: "{lesson_title}",
 {lesson_url}. {status}.'''
-
     return message.strip()
 
 
 def send_devman_review(devman_token, bot, tg_chat_id):
     api_url = 'https://dvmn.org/api/long_polling/'
     headers = {'Authorization': devman_token}
-
-    params = {}
     timestamp = None
-
-    bot.send_message(
-        chat_id=tg_chat_id,
-        text='...бот начал отслеживание проверок...'
-    )
 
     while True:
         try:
-            if timestamp:
-                params['timestamp'] = timestamp
-            else:
-                params = {}
-
+            params = {'timestamp': timestamp} if timestamp else {}
             response = requests.get(
                 api_url,
                 headers=headers,
@@ -68,20 +50,17 @@ def send_devman_review(devman_token, bot, tg_chat_id):
                 timeout=90
             )
             response.raise_for_status()
-
             devman_answer = response.json()
 
             if devman_answer.get('status') == 'found':
                 logging.info('Найдена новая проверка')
                 message = format_review_message(devman_answer)
                 logging.info(f'Сформировано сообщение: {message}')
-
                 bot.send_message(
                     chat_id=tg_chat_id,
                     text=message,
                     disable_web_page_preview=False
                 )
-
                 timestamp = devman_answer.get('last_attempt_timestamp')
 
             elif devman_answer.get('status') == 'timeout':
@@ -131,7 +110,6 @@ def main():
     try:
         bot = telegram.Bot(token=tg_token)
         bot_info = bot.get_me()
-        bot = 4 / 0
         print(f'Бот @{bot_info.username} успешно подключен')
     except Exception as error:
         print(f'Ошибка подключения к Telegram: {error}')
@@ -142,21 +120,41 @@ def main():
        level=logging.INFO
     )
     root_logger = logging.getLogger()
-    telegram_handler = TelegramLogsHandler(bot, tg_chat_id)
-    telegram_handler.setLevel(logging.INFO)
-    telegram_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    root_logger.addHandler(telegram_handler)
-    root_logger.info('логгирование вроде работает')
-
-
     try:
-        send_devman_review(devman_token, bot, tg_chat_id)
-    except KeyboardInterrupt:
-        bot.send_message(
-            chat_id=tg_chat_id,
-            text='...бот остановлен'
-        )
-        print('Бот остановлен')
+        telegram_handler = TelegramLogsHandler(bot, tg_chat_id)
+    except Exception as e:
+        print(f'Failed to sent log to Telegram: {e}')
+    telegram_handler.setLevel(logging.WARNING)
+    telegram_handler.setFormatter(
+        logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    )
+    root_logger.addHandler(telegram_handler)
+
+    bot.send_message(
+        chat_id=tg_chat_id,
+        text='Бот запущен и отслеживает проверки Devman...'
+    )
+    logging.info('Бот успешно запущен')
+
+    while True:
+        try:
+            send_devman_review(devman_token, bot, tg_chat_id)
+        except KeyboardInterrupt:
+            bot.send_message(
+                chat_id=tg_chat_id,
+                text='Бот остановлен вручную (KeyboardInterrupt)'
+            )
+            logging.info('Бот остановлен вручную')
+            break
+        except SystemExit:
+            break
+        except Exception as e:
+            logging.exception('Критическая ошибка. Перезапуск через 10сек..')
+            bot.send_message(
+                chatid=tg_chat_id,
+                text='Бот упал, но скоро перезапустится.'
+            )
+            time.sleep(10)
 
 
 if __name__ == '__main__':
