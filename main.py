@@ -6,7 +6,21 @@ import time
 from environs import Env
 
 
-logger = logging.getLogger(__name__)
+class TelegramLogsHandler(logging.Handler):
+    def __init__(self, tg_bot, chat_id):
+        super().__init__()
+        self.tg_bot = tg_bot
+        self.chat_id = chat_id
+
+    def emit(self, record):
+        log_entry = self.format(record)
+        try:
+            self.tg_bot.send_message(chat_id=self.chat_id, text=log_entry[:4096])
+        except Exception as e:
+            print(f'Failed to sent log to Telegram: {e}')
+
+
+# logger = logging.getLogger()
 
 
 def format_review_message(devman_answer):
@@ -58,9 +72,9 @@ def send_devman_review(devman_token, bot, tg_chat_id):
             devman_answer = response.json()
 
             if devman_answer.get('status') == 'found':
-                logger.info('Найдена новая проверка')
+                logging.info('Найдена новая проверка')
                 message = format_review_message(devman_answer)
-                logger.info(f'Сформировано сообщение: {message}')
+                logging.info(f'Сформировано сообщение: {message}')
 
                 bot.send_message(
                     chat_id=tg_chat_id,
@@ -72,37 +86,33 @@ def send_devman_review(devman_token, bot, tg_chat_id):
 
             elif devman_answer.get('status') == 'timeout':
                 timestamp = devman_answer.get('timestamp_to_request')
-                logger.debug('Таймаут сервера, переподключение...')
+                logging.debug('Таймаут сервера, переподключение...')
 
         except requests.exceptions.ReadTimeout:
             continue
 
         except requests.exceptions.HTTPError as error:
             if response.status_code == 401:
-                logger.error('Ошибка авторизации: неверный токен Devman')
+                logging.error('Ошибка авторизации: неверный токен Devman')
                 return
             else:
-                logger.error(f'Ошибка API Devman: {error}')
+                logging.error(f'Ошибка API Devman: {error}')
                 time.sleep(10)
 
         except requests.exceptions.ConnectionError as error:
-            logger.eror(f'Ошибка подключения: {error}')
+            logging.error(f'Ошибка подключения: {error}')
             time.sleep(10)
 
         except ValueError as error:
-            logger.error(f'Ошибка обработки данных: {error}')
+            logging.error(f'Ошибка обработки данных: {error}')
             time.sleep(5)
 
         except Exception as error:
-            logger.error(f'Неожиданная ошибка: {error}')
+            logging.error(f'Неожиданная ошибка: {error}')
             time.sleep(10)
 
 
 def main():
-    logging.basicConfig(
-       format='%(asctime)s - %(levelname)s - %(message)s',
-       level=logging.INFO
-    )
     env = Env()
     env.read_env()
 
@@ -121,9 +131,23 @@ def main():
     try:
         bot = telegram.Bot(token=tg_token)
         bot_info = bot.get_me()
+        bot = 4 / 0
         print(f'Бот @{bot_info.username} успешно подключен')
     except Exception as error:
         print(f'Ошибка подключения к Telegram: {error}')
+        return
+
+    logging.basicConfig(
+       format='%(asctime)s - %(levelname)s - %(message)s',
+       level=logging.INFO
+    )
+    root_logger = logging.getLogger()
+    telegram_handler = TelegramLogsHandler(bot, tg_chat_id)
+    telegram_handler.setLevel(logging.INFO)
+    telegram_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    root_logger.addHandler(telegram_handler)
+    root_logger.info('логгирование вроде работает')
+
 
     try:
         send_devman_review(devman_token, bot, tg_chat_id)
