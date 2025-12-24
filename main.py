@@ -97,12 +97,7 @@ def main():
 
     devman_token = env.str('DEVMAN_TOKEN')
     tg_token = env.str('TG_TOKEN')
-    parser = argparse.ArgumentParser(
-        description='Бот для отслеживания проверок Devman в Telegram'
-    )
-    parser.add_argument('chat_id', help='ID чата в Telegram')
-    args = parser.parse_args()
-    tg_chat_id = args.chat_id
+    tg_chat_id = env.str('TG_CHAT_ID')
 
     print('Запуск бота отслеживания проверок Devman...')
     print(f'Chat ID: {tg_chat_id}')
