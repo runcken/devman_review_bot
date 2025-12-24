@@ -31,7 +31,8 @@ The script uses additinal packages:
 ### Environment variables
 
 - DEVMAN_TOKEN,
-- TG_TOKEN
+- TG_TOKEN,
+- TG_CHAT_ID
 
 1. Put `.env` file near `main.py`.
 2. `.env` contains text data without quotes.
@@ -42,7 +43,7 @@ The script uses additinal packages:
 Launch on Linux(Python 3) or Windows:
 
 ```bash
-python3 main.py your-telegram-chat-id
+python3 main.py
 ```
 
 When lesson checks appear, a notification about them will be sent to Telegram
